@@ -2,6 +2,7 @@ from flask import Flask, render_template, request
 from flask_pymongo import PyMongo
 from utils.duration_filter import millis_to_duration
 
+from datetime import timedelta, datetime
 import os
 if os.path.exists('env.py'):
     import env
@@ -15,8 +16,8 @@ mongo = PyMongo(app)
 @app.route('/')
 @app.route('/index')
 def index():
-    routes = mongo.db.runs.distinct('route')
-    print(routes)
+    all_routes = list(mongo.db.routes.find())
+    routes = [item['name'] for item in all_routes]
     return render_template("index.html", routes=routes)
 
 
@@ -35,9 +36,10 @@ def runs_by_route(route):
     else:
         sort_flag = -1 if date_ordering == 'desc' else 1
         sort_dict = {"date": sort_flag}
-        total_time_ordering = 'asc' # default if not present in query
+        total_time_ordering = 'asc'  # default if not present in query
 
-    routes = mongo.db.runs.distinct('route')
+    all_routes = list(mongo.db.routes.find())
+    routes = [item['name'] for item in all_routes]
     cursor = mongo.db.runs.find({'route': route}).sort(sort_dict)
 
     runs = list(cursor)
@@ -68,14 +70,42 @@ def runs_by_route(route):
         next_total_time_order=next_total_time_order,
         next_date_order=next_date_order,
     )
-    
+
 
 @app.route('/add_new_run/<route>', methods=['GET', 'POST'])
 def add_new_run(route):
-    routes = mongo.db.runs.distinct('route')
+    if request.method == 'POST':
+        total_timedelta = timedelta(seconds=0)
+        split_dict = {(k, v) for k, v in request.form.items() if k.startswith('split')}
+        run_dict = {}
+        for label, str in split_dict:
+            print(label, str)
+            minutes, seconds = map(int, str.split(':'))
+            delta = timedelta(minutes=minutes, seconds=seconds)
+            run_dict[label] = delta.total_seconds() * 1000
+            total_timedelta += delta
+        millis = int(total_timedelta.total_seconds() * 1000)
+        run_dict['total_time'] = millis
+        date = datetime.strptime(request.form['date'], '%d/%m/%y')
+        run_dict['date'] = date.isoformat()
+        mongo.db.runs.insert_one(run_dict)
+    all_routes = list(mongo.db.routes.find())
+    routes = [item['name'] for item in all_routes]
     return render_template(
         "add_new_run.html", routes=routes, current_route=route,
     )
+
+
+@app.route('/add_new_route', methods=['GET', 'POST'])
+def add_new_route():
+    if request.method == 'POST':
+        name = request.form['name']
+        mongo.db.routes.insert_one(dict(request.form))
+        return render_template(f'runs_by_route/{name}/')
+
+    all_routes = list(mongo.db.routes.find())
+    routes = [item['name'] for item in all_routes]
+    return render_template('add_new_route.html', routes=routes)
 
 
 if __name__ == '__main__':

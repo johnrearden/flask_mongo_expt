@@ -7,3 +7,10 @@
 body {
     margin-top: 70px;
 }
+
+.label_and_delete {
+    display: flex;
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+}
